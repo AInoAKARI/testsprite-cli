@@ -10,8 +10,11 @@
  * real implementation the entrypoint uses — not a copy.
  */
 
-/** Minimum Node.js major version supported by the CLI (matches package.json `engines.node`). */
+/** Human-readable supported range, matching package.json `engines.node`. */
+export const SUPPORTED_NODE_RANGE = '20.19+, 22.13+, or 24+';
 export const MIN_SUPPORTED_NODE_MAJOR = 20;
+const MIN_NODE_20_MINOR = 19;
+const MIN_NODE_22_MINOR = 13;
 
 /**
  * Parse the leading major version number from a Node.js version string.
@@ -24,18 +27,35 @@ export function parseMajorVersion(nodeVersion: string): number {
   return Number(nodeVersion.split('.')[0]);
 }
 
+function parseMajorMinor(nodeVersion: string): { major: number; minor: number } | null {
+  const [majorRaw, minorRaw] = nodeVersion.split('.');
+  const major = Number(majorRaw);
+  const minor = Number(minorRaw);
+  if (!Number.isInteger(major) || !Number.isInteger(minor) || major < 0 || minor < 0) {
+    return null;
+  }
+  return { major, minor };
+}
+
 /**
- * Decide whether the given Node.js version is too old to run the CLI.
+ * Decide whether the given Node.js version is outside the supported runtime windows
+ * declared by `package.json#engines.node`.
  *
- * A version is rejected only when its major number is a real value below
- * {@link MIN_SUPPORTED_NODE_MAJOR}. An unparseable string yields `NaN`, which is
- * treated as "do not reject" so the guard never blocks on a version string it
- * cannot understand (the runtime would surface any real incompatibility itself).
+ * An unparseable string is treated as "do not reject" so the guard never blocks on
+ * a version string it cannot understand (the runtime would surface incompatibility).
  *
- * @param nodeVersion - a `process.versions.node` style string (e.g. `"18.19.1"`).
- * @returns `true` when the runtime is below the supported floor and should be rejected.
+ * @param nodeVersion - a `process.versions.node` style string (e.g. `"20.19.1"`).
+ * @returns `true` when the runtime is outside the supported range and should be rejected.
  */
 export function shouldRejectNodeVersion(nodeVersion: string): boolean {
-  const major = parseMajorVersion(nodeVersion);
-  return !Number.isNaN(major) && major < MIN_SUPPORTED_NODE_MAJOR;
+  const parsed = parseMajorMinor(nodeVersion);
+  if (parsed === null) return false;
+
+  const { major, minor } = parsed;
+  if (major < 20) return true;
+  if (major === 20) return minor < MIN_NODE_20_MINOR;
+  if (major === 21) return true;
+  if (major === 22) return minor < MIN_NODE_22_MINOR;
+  if (major === 23) return true;
+  return false;
 }
